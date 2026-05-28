@@ -189,6 +189,13 @@ function normalizeError(error: unknown) {
   return { message: 'Request failed' };
 }
 
+export type ProfilePayload = {
+  full_name: string;
+  phone?: string;
+  location?: string;
+  bio?: string;
+};
+
 export const supabase = {
   auth: {
     async getSession() {
@@ -239,6 +246,59 @@ export const supabase = {
       await jsonFetch('/api/auth/logout', { method: 'POST' });
       window.dispatchEvent(new Event(AUTH_EVENT));
       return { error: null };
+    },
+    async getProfile() {
+      try {
+        const payload = await jsonFetch<{ profile: ProfilePayload & { id: string; email: string } }>(
+          '/api/auth/profile'
+        );
+        return { data: payload.profile, error: null };
+      } catch (error) {
+        return { data: null, error: normalizeError(error) };
+      }
+    },
+    async updateProfile(profile: ProfilePayload) {
+      try {
+        const payload = await jsonFetch<{ profile: ProfilePayload & { id: string; email: string } }>(
+          '/api/auth/profile',
+          { method: 'PATCH', body: JSON.stringify(profile) }
+        );
+        window.dispatchEvent(new Event(AUTH_EVENT));
+        return { data: payload.profile, error: null };
+      } catch (error) {
+        return { data: null, error: normalizeError(error) };
+      }
+    },
+    async deleteProfile() {
+      try {
+        await jsonFetch('/api/auth/profile', { method: 'DELETE' });
+        window.dispatchEvent(new Event(AUTH_EVENT));
+        return { error: null };
+      } catch (error) {
+        return { error: normalizeError(error) };
+      }
+    },
+    async changePassword(currentPassword: string, newPassword: string) {
+      try {
+        await jsonFetch('/api/auth/change-password', {
+          method: 'POST',
+          body: JSON.stringify({ currentPassword, newPassword }),
+        });
+        return { error: null };
+      } catch (error) {
+        return { error: normalizeError(error) };
+      }
+    },
+    async resetPassword(email: string, newPassword: string) {
+      try {
+        await jsonFetch('/api/auth/reset-password', {
+          method: 'POST',
+          body: JSON.stringify({ email, newPassword }),
+        });
+        return { error: null };
+      } catch (error) {
+        return { error: normalizeError(error) };
+      }
     },
     onAuthStateChange(callback: AuthListener) {
       const handler = async () => {

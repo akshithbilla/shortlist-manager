@@ -5,15 +5,23 @@ import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
   Star, StarOff, MoreHorizontal, Download, FileText,
-  Table2, Printer, Pencil, Check, Loader2
+  Table2, Printer, Pencil, Check, Loader2, Share2, Copy, Link2, ShieldOff
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/lib/store';
 import { DataTable } from '@/components/data-table';
-import { exportToCSV, exportToExcel, exportToPDF } from '@/lib/export';
+import { exportToCSV, exportToExcel, exportToPDF, printTable } from '@/lib/export';
 import type { Page } from '@/lib/supabase';
 
 const PAGE_ICONS = ['📋', '🎓', '📊', '📌', '🔍', '💡', '📁', '🗂️', '✨', '🏆', '🎯', '📚'];
+type ShareLink = {
+  id: string;
+  token: string;
+  share_url: string;
+  is_active: boolean;
+  expires_at: string | null;
+  created_at: string;
+};
 
 export default function PageView() {
   const { id } = useParams() as { id: string };
@@ -26,6 +34,12 @@ export default function PageView() {
   const [showMenu, setShowMenu] = useState(false);
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareLinks, setShareLinks] = useState<ShareLink[]>([]);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareError, setShareError] = useState('');
+  const [shareMsg, setShareMsg] = useState('');
+  const [expiresAt, setExpiresAt] = useState('');
 
   const loadPage = useCallback(async () => {
     setLoading(true);
@@ -86,8 +100,73 @@ export default function PageView() {
   }
 
   function handlePrint() {
-    window.print();
+    printTable(columns, rows, page?.name ?? 'Report');
     setShowMenu(false);
+  }
+
+  async function loadShareLinks() {
+    if (!id) return;
+    setShareLoading(true);
+    setShareError('');
+    try {
+      const res = await fetch(`/api/share?pageId=${encodeURIComponent(id)}`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? 'Failed to load share links.');
+      setShareLinks((body.links ?? []) as ShareLink[]);
+    } catch (err) {
+      setShareError(err instanceof Error ? err.message : 'Failed to load share links.');
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function createShareLink() {
+    setShareLoading(true);
+    setShareError('');
+    setShareMsg('');
+    try {
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageId: id, expiresAt: expiresAt || null }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? 'Failed to create share link.');
+      setShareMsg('Share link created.');
+      await loadShareLinks();
+    } catch (err) {
+      setShareError(err instanceof Error ? err.message : 'Failed to create share link.');
+      setShareLoading(false);
+    }
+  }
+
+  async function revokeShareLink(linkId: string) {
+    setShareLoading(true);
+    setShareError('');
+    setShareMsg('');
+    try {
+      const res = await fetch('/api/share', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkId, isActive: false }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? 'Failed to revoke link.');
+      setShareMsg('Share link revoked.');
+      await loadShareLinks();
+    } catch (err) {
+      setShareError(err instanceof Error ? err.message : 'Failed to revoke share link.');
+      setShareLoading(false);
+    }
+  }
+
+  async function copyLink(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareMsg('Share link copied.');
+    } catch {
+      setShareError('Failed to copy link.');
+    }
   }
 
   if (loading) {
@@ -211,6 +290,17 @@ export default function PageView() {
                   <button onClick={handlePrint} className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800">
                     <Printer className="w-3.5 h-3.5" /> Print
                   </button>
+                  <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+                  <button
+                    onClick={() => {
+                      setShowShareModal(true);
+                      setShowMenu(false);
+                      loadShareLinks();
+                    }}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    <Share2 className="w-3.5 h-3.5" /> Share page
+                  </button>
                 </motion.div>
               )}
             </div>
@@ -222,6 +312,92 @@ export default function PageView() {
       <div className="flex-1 overflow-hidden">
         <DataTable pageId={id} />
       </div>
+
+      {showShareModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl max-h-[85vh] overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Share this page</h2>
+              <button onClick={() => setShowShareModal(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+                ✕
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-auto max-h-[70vh]">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Anyone with the link can view this page in read-only mode. They do not need to log in.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                    Expires at (optional)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={expiresAt}
+                    onChange={(e) => setExpiresAt(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={createShareLink}
+                  disabled={shareLoading}
+                  className="h-10 px-4 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-medium hover:bg-slate-700 dark:hover:bg-slate-100 disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {shareLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Create link
+                </button>
+              </div>
+
+              {shareError && <p className="text-sm text-red-600 dark:text-red-400">{shareError}</p>}
+              {shareMsg && <p className="text-sm text-emerald-600 dark:text-emerald-400">{shareMsg}</p>}
+
+              <div className="space-y-2">
+                {shareLinks.length === 0 && !shareLoading ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">No share links created yet.</p>
+                ) : (
+                  shareLinks.map((link) => (
+                    <div key={link.id} className="border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                          <Link2 className="w-3.5 h-3.5" />
+                          {link.is_active ? 'Active' : 'Revoked'}
+                          {link.expires_at ? ` · Expires ${new Date(link.expires_at).toLocaleString()}` : ' · No expiry'}
+                        </div>
+                        {link.is_active ? (
+                          <button
+                            onClick={() => revokeShareLink(link.id)}
+                            className="text-xs px-2 py-1 rounded-lg border border-red-300 dark:border-red-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-1"
+                          >
+                            <ShieldOff className="w-3.5 h-3.5" />
+                            Revoke
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={link.share_url}
+                          readOnly
+                          className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                        />
+                        <button
+                          onClick={() => copyLink(link.share_url)}
+                          className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5 text-xs"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

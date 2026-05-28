@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  BookOpen, Plus, Star, Trash2, MoreHorizontal, Search,
+  BookOpen, Plus, Star, Trash2, Search,
   Home, Moon, Sun, LogOut, ChevronDown, ChevronRight,
-  GripVertical, Copy, Settings
+  Copy, Settings
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { supabase } from '@/lib/supabase';
@@ -106,6 +106,17 @@ export function Sidebar({ pages, onCreatePage, onDeletePage, onDuplicatePage }: 
         >
           <Home className="w-4 h-4" />
           Dashboard
+        </button>
+        <button
+          onClick={() => router.push('/my-profile')}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${
+            pathname === '/my-profile'
+              ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Settings className="w-4 h-4" />
+          My Profile
         </button>
       </nav>
 
