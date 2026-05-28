@@ -143,11 +143,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const { data: cols } = await supabase.from('columns').select('*').eq('page_id', id);
     if (cols?.length) {
       const colMap: Record<string, string> = {};
-      const colInserts = cols.map(({ id: _, created_at: __, updated_at: ___, page_id: ____, ...rest }) => ({
+      const colInserts = cols.map((
+        {
+          id: _,
+          created_at: __,
+          updated_at: ___,
+          page_id: ____,
+          ...rest
+        }: {
+          id: string;
+          created_at: string;
+          updated_at: string;
+          page_id: string;
+          [key: string]: unknown;
+        }
+      ) => ({
         ...rest,
         page_id: newPage.id,
         user_id: u.id,
-      }));
+      }))
       const { data: newCols } = await supabase.from('columns').insert(colInserts).select();
       if (newCols) {
         cols.forEach((c, i) => { colMap[c.id] = newCols[i]?.id ?? ''; });
