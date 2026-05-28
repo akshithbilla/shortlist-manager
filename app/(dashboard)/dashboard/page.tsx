@@ -71,7 +71,9 @@ export default function DashboardPage() {
 
     if (createdCols) {
       const colMap: Record<string, string> = {};
-      createdCols.forEach((c) => { colMap[c.name] = c.id; });
+      createdCols.forEach((c: { name: string; id: string }) => {
+        colMap[c.name] = c.id;
+      });
       const rowInserts = SAMPLE_COLLEGES.map((college, i) => {
         const data: Record<string, unknown> = {};
         Object.entries(college).forEach(([key, val]) => { if (colMap[key]) data[colMap[key]] = val; });
