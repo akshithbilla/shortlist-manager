@@ -164,18 +164,48 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }))
       const { data: newCols } = await supabase.from('columns').insert(colInserts).select();
       if (newCols) {
-        cols.forEach((c, i) => { colMap[c.id] = newCols[i]?.id ?? ''; });
+        cols.forEach((c: { id: string }, i: number) => {
+          colMap[c.id] = newCols[i]?.id ?? '';
+        });
       }
 
       // Duplicate rows
       const { data: rowsData } = await supabase.from('rows').select('*').eq('page_id', id);
       if (rowsData?.length && Object.keys(colMap).length) {
-        const rowInserts = rowsData.map(({ id: _, created_at: __, updated_at: ___, page_id: ____, user_id: _____, ...rest }) => {
+        const rowInserts = rowsData.map((
+          {
+            id: _,
+            created_at: __,
+            updated_at: ___,
+            page_id: ____,
+            user_id: _____,
+            ...rest
+          }: {
+            id: string;
+            created_at: string;
+            updated_at: string;
+            page_id: string;
+            user_id: string;
+            data: Record<string, unknown>;
+            [key: string]: unknown;
+          }
+        ) => {
           const newData: Record<string, unknown> = {};
-          Object.entries(rest.data as Record<string, unknown>).forEach(([colId, val]) => {
-            if (colMap[colId]) newData[colMap[colId]] = val;
-          });
-          return { ...rest, page_id: newPage.id, user_id: u.id, data: newData };
+        
+          Object.entries(rest.data as Record<string, unknown>).forEach(
+            ([colId, val]: [string, unknown]) => {
+              if (colMap[colId]) {
+                newData[colMap[colId]] = val;
+              }
+            }
+          );
+        
+          return {
+            ...rest,
+            page_id: newPage.id,
+            user_id: u.id,
+            data: newData,
+          };
         });
         await supabase.from('rows').insert(rowInserts);
       }
