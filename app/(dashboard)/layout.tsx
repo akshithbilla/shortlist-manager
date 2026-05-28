@@ -95,7 +95,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // Create sample rows
     if (createdCols) {
       const colMap: Record<string, string> = {};
-      createdCols.forEach((c) => { colMap[c.name] = c.id; });
+      createdCols.forEach((c: { name: string; id: string }) => {
+        colMap[c.name] = c.id;
+      });
 
       const rowInserts = SAMPLE_COLLEGES.map((college, i) => {
         const data: Record<string, unknown> = {};
