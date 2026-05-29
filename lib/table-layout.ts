@@ -52,16 +52,16 @@ export function shouldRenderCell(
   colId: string,
   columns: Column[]
 ): boolean {
-  const sorted = sortByOrder(rows);
-  const sortedCols = sortByOrder(columns);
-  const row = sorted[rowIndex];
-  const colIdx = sortedCols.findIndex((c) => c.id === colId);
+  // IMPORTANT: `rows` and `columns` must be passed in the same order as rendered.
+  // Do not re-sort here — re-sorting breaks merge math and causes “blank gaps” and shifts.
+  const row = rows[rowIndex];
+  const colIdx = columns.findIndex((c) => c.id === colId);
   if (!row || colIdx < 0) return false;
 
   if (isCellSkipped(row, colId)) return false;
 
   for (let i = rowIndex - 1; i >= 0; i--) {
-    const above = sorted[i];
+    const above = rows[i];
     if (isCellSkipped(above, colId)) continue;
     const span = getRowspan(above, colId);
     if (rowIndex - i < span) return false;
@@ -69,7 +69,7 @@ export function shouldRenderCell(
   }
 
   for (let j = colIdx - 1; j >= 0; j--) {
-    const leftCol = sortedCols[j];
+    const leftCol = columns[j];
     if (isCellSkipped(row, leftCol.id)) continue;
     const span = getColspan(row, leftCol.id);
     if (colIdx - j < span) return false;

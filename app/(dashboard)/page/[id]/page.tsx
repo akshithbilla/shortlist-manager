@@ -303,9 +303,9 @@ export default function PageView() {
                   <button onClick={() => handleExport('xlsx')} className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800">
                     <Table2 className="w-3.5 h-3.5" /> Export as Excel
                   </button>
-                  <button onClick={() => handleExport('pdf')} className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800">
+                  {/* <button onClick={() => handleExport('pdf')} className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800">
                     <Download className="w-3.5 h-3.5" /> Export as PDF
-                  </button>
+                  </button> */}
                   <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
                   <button onClick={handlePrint} className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800">
                     <Printer className="w-3.5 h-3.5" /> Print

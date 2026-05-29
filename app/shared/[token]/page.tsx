@@ -83,10 +83,10 @@ export default function SharedPageView() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-4">
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+        <div className="bg-white/90 dark:bg-slate-900/70 backdrop-blur border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             {data.page.icon || '📋'} {data.page.name}
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -94,19 +94,28 @@ export default function SharedPageView() {
           </p>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-auto">
-          <table className="min-w-full border-separate border-spacing-0">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+          <div className="overflow-auto">
+            <table className="min-w-full border-separate border-spacing-0">
             <thead>
               {hasGroupedHeaders ? (
                 <>
                   <tr>
                     {headerModel.ungrouped.map((col) => (
-                      <th key={col.id} rowSpan={2} className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-left text-sm font-semibold px-3 py-2 border-b border-r border-slate-200 dark:border-slate-700">
+                      <th
+                        key={col.id}
+                        rowSpan={2}
+                        className="sticky top-0 z-10 bg-slate-900 text-white text-center text-xs font-semibold px-3 py-3 border-b border-r border-slate-700 whitespace-nowrap"
+                      >
                         {col.name}
                       </th>
                     ))}
                     {headerModel.groups.map((group) => (
-                      <th key={group.id} colSpan={group.column_ids.length} className="sticky top-0 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100 text-center text-sm font-semibold px-3 py-2 border-b border-slate-200 dark:border-slate-700">
+                      <th
+                        key={group.id}
+                        colSpan={group.column_ids.length}
+                        className="sticky top-0 z-10 bg-slate-800 text-white text-center text-xs font-semibold px-3 py-3 border-b border-slate-700 whitespace-nowrap"
+                      >
                         {group.label}
                       </th>
                     ))}
@@ -117,7 +126,10 @@ export default function SharedPageView() {
                         .map((cid) => visibleColumns.find((c) => c.id === cid))
                         .filter(Boolean)
                         .map((col) => (
-                          <th key={col!.id} className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-left text-sm font-medium px-3 py-2 border-b border-slate-200 dark:border-slate-700">
+                          <th
+                            key={col!.id}
+                            className="sticky top-0 z-10 bg-slate-900 text-white text-center text-xs font-semibold px-3 py-3 border-b border-r border-slate-700 whitespace-nowrap"
+                          >
                             {col!.name}
                           </th>
                         ))
@@ -129,7 +141,7 @@ export default function SharedPageView() {
                   {visibleColumns.map((col) => (
                     <th
                       key={col.id}
-                      className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-left text-sm font-semibold px-3 py-2 border-b border-slate-200 dark:border-slate-700"
+                      className="sticky top-0 z-10 bg-slate-900 text-white text-center text-xs font-semibold px-3 py-3 border-b border-slate-700 whitespace-nowrap"
                     >
                       {col.name}
                     </th>
@@ -139,7 +151,7 @@ export default function SharedPageView() {
             </thead>
             <tbody>
               {sortedRows.map((row, rowIndex) => (
-                <tr key={row.id}>
+                <tr key={row.id} className={rowIndex % 2 === 0 ? 'bg-white dark:bg-slate-950' : 'bg-slate-50 dark:bg-slate-900/40'}>
                   {visibleColumns.map((col) => {
                     if (!shouldRenderCell(sortedRows, rowIndex, col.id, visibleColumns)) return null;
                     const rowspan = getRowspan(row, col.id);
@@ -149,7 +161,7 @@ export default function SharedPageView() {
                         key={`${row.id}-${col.id}`}
                         rowSpan={rowspan > 1 ? rowspan : undefined}
                         colSpan={colspan > 1 ? colspan : undefined}
-                        className="px-3 py-2 text-sm border-b border-r border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-300 align-middle"
+                        className="px-3 py-2 text-sm border-b border-r border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 align-middle text-center whitespace-nowrap"
                       >
                         {formatCell(row.data[col.id])}
                       </td>
@@ -159,6 +171,7 @@ export default function SharedPageView() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </div>

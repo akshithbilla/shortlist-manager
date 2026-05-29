@@ -1,5 +1,5 @@
 import type { Column, Row } from './supabase';
-import { getColspan, getRowspan, shouldRenderCell, sortByOrder } from './table-layout';
+import { getColspan, getRowspan, normalizeCellMeta, shouldRenderCell, sortByOrder } from './table-layout';
 
 const CELL_STYLE = 'text-align:center;vertical-align:middle;padding:10px 8px;';
 const DATA_CELL_CLASS = 'data-cell';
@@ -103,11 +103,13 @@ export async function exportToPDF(columns: Column[], rows: Row[], title: string,
   doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 30);
 
   const visibleCols = getExportColumns(columns);
-  const sorted = sortByOrder(rows);
+  const sorted = normalizeCellMeta(sortByOrder(rows), visibleCols);
   const head = [visibleCols.map((c) => c.name)];
+  // PDF export: preserve merged layout (rowSpan/colSpan) like the UI.
+  // Covered cells are emitted as `null` so autoTable doesn't draw extra grid lines.
   const body = sorted.map((r, ri) =>
     visibleCols.map((c) => {
-      if (!shouldRenderCell(sorted, ri, c.id, visibleCols)) return '';
+      if (!shouldRenderCell(sorted, ri, c.id, visibleCols)) return null;
       const rs = getRowspan(r, c.id);
       const cs = getColspan(r, c.id);
       const content = formatCellValue(r.data[c.id]);
@@ -116,6 +118,11 @@ export async function exportToPDF(columns: Column[], rows: Row[], title: string,
         content,
         rowSpan: rs > 1 ? rs : undefined,
         colSpan: cs > 1 ? cs : undefined,
+        styles: {
+          halign: 'center' as const,
+          valign: 'middle' as const,
+          cellPadding: 6,
+        },
       };
     })
   );
