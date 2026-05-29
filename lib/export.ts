@@ -1,5 +1,5 @@
 import type { Column, Row } from './supabase';
-import { getColspan, getRowspan, isCellSkipped, sortByOrder } from './table-layout';
+import { getColspan, getRowspan, shouldRenderCell, sortByOrder } from './table-layout';
 
 const CELL_STYLE = 'text-align:center;vertical-align:middle;padding:10px 8px;';
 const DATA_CELL_CLASS = 'data-cell';
@@ -21,9 +21,9 @@ export function exportToCSV(columns: Column[], rows: Row[], filename = 'export')
   const visibleCols = getExportColumns(columns);
   const sorted = sortByOrder(rows);
   const header = visibleCols.map((c) => c.name).join(',');
-  const body = sorted.map((r) => {
+  const body = sorted.map((r, ri) => {
     return visibleCols.map((c) => {
-      if (isCellSkipped(r, c.id)) return '';
+      if (!shouldRenderCell(sorted, ri, c.id, visibleCols)) return '';
       const str = formatCellValue(r.data[c.id]);
       return str.includes(',') ? `"${str}"` : str;
     }).join(',');
@@ -32,8 +32,15 @@ export function exportToCSV(columns: Column[], rows: Row[], filename = 'export')
   downloadFile(csv, `${filename}.csv`, 'text/csv');
 }
 
-function buildHtmlDataCell(row: Row, col: Column, colIndex: number) {
-  if (isCellSkipped(row, col.id)) return '';
+function buildHtmlDataCell(
+  rows: Row[],
+  rowIndex: number,
+  row: Row,
+  col: Column,
+  columns: Column[],
+  colIndex: number
+) {
+  if (!shouldRenderCell(rows, rowIndex, col.id, columns)) return '';
   const rs = getRowspan(row, col.id);
   const cs = getColspan(row, col.id);
   const attrs = [
@@ -51,8 +58,10 @@ export function exportToExcel(columns: Column[], rows: Row[], filename = 'export
     const sorted = sortByOrder(rows);
     const data = [
       visibleCols.map((c) => c.name),
-      ...sorted.map((r) =>
-        visibleCols.map((c) => (isCellSkipped(r, c.id) ? '' : formatCellValue(r.data[c.id])))
+      ...sorted.map((r, ri) =>
+        visibleCols.map((c) =>
+          shouldRenderCell(sorted, ri, c.id, visibleCols) ? formatCellValue(r.data[c.id]) : ''
+        )
       ),
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
@@ -61,7 +70,7 @@ export function exportToExcel(columns: Column[], rows: Row[], filename = 'export
 
     sorted.forEach((row, ri) => {
       visibleCols.forEach((col, ci) => {
-        if (isCellSkipped(row, col.id)) return;
+        if (!shouldRenderCell(sorted, ri, col.id, visibleCols)) return;
         const rs = getRowspan(row, col.id);
         const cs = getColspan(row, col.id);
         if (rs > 1 || cs > 1) {
@@ -96,9 +105,9 @@ export async function exportToPDF(columns: Column[], rows: Row[], title: string,
   const visibleCols = getExportColumns(columns);
   const sorted = sortByOrder(rows);
   const head = [visibleCols.map((c) => c.name)];
-  const body = sorted.map((r) =>
+  const body = sorted.map((r, ri) =>
     visibleCols.map((c) => {
-      if (isCellSkipped(r, c.id)) return '';
+      if (!shouldRenderCell(sorted, ri, c.id, visibleCols)) return '';
       const rs = getRowspan(r, c.id);
       const cs = getColspan(r, c.id);
       const content = formatCellValue(r.data[c.id]);
@@ -162,7 +171,9 @@ export function printTable(columns: Column[], rows: Row[], title: string) {
   const body = sorted
     .map((row, rowIndex) => {
       const cells = visibleCols
-        .map((col, colIndex) => buildHtmlDataCell(row, col, colIndex))
+        .map((col, colIndex) =>
+          buildHtmlDataCell(sorted, rowIndex, row, col, visibleCols, colIndex)
+        )
         .join('');
       const rowClass = rowIndex % 2 === 0 ? 'row-even' : 'row-odd';
       return `<tr class="${rowClass}">${cells}</tr>`;

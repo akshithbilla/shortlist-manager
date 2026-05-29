@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import type { Column, Row, PageLayout } from '@/lib/supabase';
-import { buildColumnHeaderModel, getColspan, getRowspan, isCellSkipped } from '@/lib/table-layout';
+import { buildColumnHeaderModel, getColspan, getRowspan, shouldRenderCell } from '@/lib/table-layout';
 
 type SharedPayload = {
   page: { id: string; name: string; icon?: string; updated_at?: string; layout?: PageLayout };
@@ -54,6 +54,11 @@ export default function SharedPageView() {
     [visibleColumns, data?.page?.layout]
   );
   const hasGroupedHeaders = (data?.page?.layout?.column_groups?.length ?? 0) > 0;
+
+  const sortedRows = useMemo(
+    () => [...(data?.rows ?? [])].sort((a, b) => a.order_index - b.order_index),
+    [data?.rows]
+  );
 
   if (loading) {
     return (
@@ -133,10 +138,10 @@ export default function SharedPageView() {
               )}
             </thead>
             <tbody>
-              {data.rows.map((row) => (
+              {sortedRows.map((row, rowIndex) => (
                 <tr key={row.id}>
                   {visibleColumns.map((col) => {
-                    if (isCellSkipped(row, col.id)) return null;
+                    if (!shouldRenderCell(sortedRows, rowIndex, col.id, visibleColumns)) return null;
                     const rowspan = getRowspan(row, col.id);
                     const colspan = getColspan(row, col.id);
                     return (

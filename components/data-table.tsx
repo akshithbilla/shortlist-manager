@@ -18,12 +18,14 @@ import {
   mergeDown,
   mergeRight,
   splitCell,
-  isCellSkipped,
   getRowspan,
+  resolveMergeAnchor,
   getColspan,
   buildColumnHeaderModel,
   buildSerialMap,
   isMergedCell,
+  normalizeCellMeta,
+  shouldRenderCell,
 } from '@/lib/table-layout';
 import type { SerialInfo } from '@/lib/table-layout';
 
@@ -123,10 +125,11 @@ export function DataTable({ pageId }: DataTableProps) {
     return () => document.removeEventListener('click', close);
   }, []);
 
-  async function persistRows(updated: Row[]) {
-    setRows(updated);
+  async function persistAllRows(fullRows: Row[], rowsToSave?: Row[]) {
+    setRows(fullRows);
+    const saves = rowsToSave ?? fullRows;
     await Promise.all(
-      updated.map((r) =>
+      saves.map((r) =>
         supabase.from('rows').update({
           cell_meta: r.cell_meta ?? {},
           updated_at: new Date().toISOString(),
@@ -236,7 +239,8 @@ export function DataTable({ pageId }: DataTableProps) {
     rowId: string,
     colId: string
   ) {
-    const next = fn(rows, rowId, colId, visibleCols);
+    const merged = fn(rows, rowId, colId, visibleCols);
+    const next = normalizeCellMeta(merged, visibleCols);
     const changed = next.filter((r) => {
       const old = rows.find((o) => o.id === r.id);
       return JSON.stringify(old?.cell_meta ?? {}) !== JSON.stringify(r.cell_meta ?? {});
@@ -542,10 +546,14 @@ export function DataTable({ pageId }: DataTableProps) {
           </thead>
 
           <tbody>
-            {paginatedRows.map((row) => (
+            {paginatedRows.map((row) => {
+              const rowIndex = filteredRows.findIndex((r) => r.id === row.id);
+              return (
               <TableRow
                 key={row.id}
                 row={row}
+                rowIndex={rowIndex}
+                allRows={filteredRows}
                 serial={serialMap.get(row.id) ?? { display: null, rowspan: 1 }}
                 columns={visibleCols}
                 isSelected={selectedRows.includes(row.id)}
@@ -566,7 +574,8 @@ export function DataTable({ pageId }: DataTableProps) {
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => dragRowId && reorderRows(dragRowId, row.id)}
               />
-            ))}
+            );
+            })}
 
             <tr>
               <td colSpan={visibleCols.length + 4} className="border-b border-slate-100 dark:border-slate-800/50">
@@ -620,22 +629,37 @@ export function DataTable({ pageId }: DataTableProps) {
         <CellContextMenu
           x={cellMenu.x}
           y={cellMenu.y}
-          canMergeDown={menuRowIdx >= 0 && menuRowIdx < sortedAll.length - 1 && !isCellSkipped(menuRow, cellMenu.colId)}
-          canMergeRight={
-            menuColIdx >= 0 &&
-            menuColIdx + getColspan(menuRow, cellMenu.colId) < visibleCols.length &&
-            !isCellSkipped(menuRow, cellMenu.colId)
-          }
-          canSplit={
-            getRowspan(menuRow, cellMenu.colId) > 1 ||
-            getColspan(menuRow, cellMenu.colId) > 1 ||
-            isCellSkipped(menuRow, cellMenu.colId)
-          }
+          canMergeDown={(() => {
+            const anchor = resolveMergeAnchor(rows, cellMenu.rowId, cellMenu.colId);
+            if (!anchor) return false;
+            const idx = sortByOrder(rows).findIndex((r) => r.id === anchor.id);
+            const span = getRowspan(anchor, cellMenu.colId);
+            return idx >= 0 && idx + span < sortByOrder(rows).length;
+          })()}
+          canMergeRight={(() => {
+            const anchor = resolveMergeAnchor(rows, cellMenu.rowId, cellMenu.colId);
+            if (!anchor) return false;
+            const colIdx = visibleCols.findIndex((c) => c.id === cellMenu.colId);
+            return colIdx >= 0 && colIdx + getColspan(anchor, cellMenu.colId) < visibleCols.length;
+          })()}
+          canSplit={(() => {
+            const anchor = resolveMergeAnchor(rows, cellMenu.rowId, cellMenu.colId) ?? menuRow;
+            return (
+              getRowspan(anchor, cellMenu.colId) > 1 ||
+              getColspan(anchor, cellMenu.colId) > 1 ||
+              !shouldRenderCell(sortedAll, menuRowIdx, cellMenu.colId, visibleCols)
+            );
+          })()}
           onMergeDown={() => applyMerge(mergeDown, cellMenu.rowId, cellMenu.colId)}
           onMergeRight={() => applyMerge(mergeRight, cellMenu.rowId, cellMenu.colId)}
-          onSplit={() => {
+          onSplit={async () => {
             const next = splitCell(rows, cellMenu.rowId, cellMenu.colId, visibleCols);
-            persistRows(next.filter((r, i) => r !== rows[i]));
+            const changed = next.filter((r) => {
+              const old = rows.find((o) => o.id === r.id);
+              return JSON.stringify(old?.cell_meta ?? {}) !== JSON.stringify(r.cell_meta ?? {});
+            });
+            await persistAllRows(next, changed);
+            setCellMenu(null);
           }}
         />
       )}
@@ -645,6 +669,8 @@ export function DataTable({ pageId }: DataTableProps) {
 
 interface TableRowProps {
   row: Row;
+  rowIndex: number;
+  allRows: Row[];
   serial: SerialInfo;
   columns: Column[];
   isSelected: boolean;
@@ -665,6 +691,8 @@ interface TableRowProps {
 
 function TableRow({
   row,
+  rowIndex,
+  allRows,
   serial,
   columns,
   isSelected,
@@ -736,7 +764,7 @@ function TableRow({
       </td>
 
       {columns.map((col) => {
-        if (isCellSkipped(row, col.id)) return null;
+        if (!shouldRenderCell(allRows, rowIndex, col.id, columns)) return null;
 
         const isEditing = editingCell?.rowId === row.id && editingCell?.colId === col.id;
         const rowspan = getRowspan(row, col.id);

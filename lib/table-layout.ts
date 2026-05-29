@@ -32,20 +32,107 @@ function patchRowMeta(row: Row, colId: string, meta: CellMeta | null): Row {
   return { ...row, cell_meta: Object.keys(next).length ? next : undefined };
 }
 
-export function mergeDown(rows: Row[], rowId: string, colId: string): Row[] {
+/** Find the anchor row for merge actions (walk up if cell is skipped). */
+export function resolveMergeAnchor(rows: Row[], rowId: string, colId: string): Row | null {
   const sorted = sortByOrder(rows);
-  const idx = sorted.findIndex((r) => r.id === rowId);
-  if (idx < 0 || idx >= sorted.length - 1) return rows;
+  let idx = sorted.findIndex((r) => r.id === rowId);
+  if (idx < 0) return null;
+  while (idx > 0 && isCellSkipped(sorted[idx], colId)) {
+    idx -= 1;
+  }
+  return sorted[idx] ?? null;
+}
 
-  const anchor = sorted[idx];
-  const below = sorted[idx + 1];
-  const rowspan = getRowspan(anchor, colId) + 1;
+/**
+ * Whether this cell should render a <td> (not covered by rowspan above or colspan from the left).
+ */
+export function shouldRenderCell(
+  rows: Row[],
+  rowIndex: number,
+  colId: string,
+  columns: Column[]
+): boolean {
+  const sorted = sortByOrder(rows);
+  const sortedCols = sortByOrder(columns);
+  const row = sorted[rowIndex];
+  const colIdx = sortedCols.findIndex((c) => c.id === colId);
+  if (!row || colIdx < 0) return false;
+
+  if (isCellSkipped(row, colId)) return false;
+
+  for (let i = rowIndex - 1; i >= 0; i--) {
+    const above = sorted[i];
+    if (isCellSkipped(above, colId)) continue;
+    const span = getRowspan(above, colId);
+    if (rowIndex - i < span) return false;
+    break;
+  }
+
+  for (let j = colIdx - 1; j >= 0; j--) {
+    const leftCol = sortedCols[j];
+    if (isCellSkipped(row, leftCol.id)) continue;
+    const span = getColspan(row, leftCol.id);
+    if (colIdx - j < span) return false;
+    break;
+  }
+
+  return true;
+}
+
+/** Fix rowspan/skip mismatches saved in the database. */
+export function normalizeCellMeta(rows: Row[], columns: Column[]): Row[] {
+  const sortedCols = sortByOrder(columns);
+
+  let result = rows.map((r) => {
+    let next = r;
+    for (const col of sortedCols) {
+      if (getCellMeta(next, col.id)?.skip) {
+        next = patchRowMeta(next, col.id, null);
+      }
+    }
+    return next;
+  });
+
+  const sorted = sortByOrder(result);
+  for (const col of sortedCols) {
+    for (let i = 0; i < sorted.length; i++) {
+      const anchor = sorted[i];
+      const span = getRowspan(anchor, col.id);
+      if (span <= 1) continue;
+      for (let j = 1; j < span && i + j < sorted.length; j++) {
+        const targetId = sorted[i + j].id;
+        result = result.map((r) =>
+          r.id === targetId ? patchRowMeta(r, col.id, { skip: true }) : r
+        );
+      }
+    }
+  }
+
+  return result;
+}
+
+export function mergeDown(rows: Row[], rowId: string, colId: string): Row[] {
+  const anchor = resolveMergeAnchor(rows, rowId, colId);
+  if (!anchor) return rows;
+
+  const sorted = sortByOrder(rows);
+  const idx = sorted.findIndex((r) => r.id === anchor.id);
+  const currentSpan = getRowspan(anchor, colId);
+  const absorbIdx = idx + currentSpan;
+
+  if (idx < 0 || absorbIdx >= sorted.length) return rows;
+
+  const absorbRow = sorted[absorbIdx];
+  const newRowspan = currentSpan + 1;
 
   return rows.map((r) => {
     if (r.id === anchor.id) {
-      return patchRowMeta(r, colId, { rowspan, colspan: getColspan(r, colId) });
+      return patchRowMeta(r, colId, {
+        rowspan: newRowspan,
+        colspan: getColspan(r, colId),
+      });
     }
-    if (r.id === below.id) {
+    if (r.id === absorbRow.id) {
       return patchRowMeta(r, colId, { skip: true });
     }
     return r;
@@ -54,9 +141,10 @@ export function mergeDown(rows: Row[], rowId: string, colId: string): Row[] {
 
 export function mergeRight(rows: Row[], rowId: string, colId: string, columns: Column[]): Row[] {
   const sortedCols = sortByOrder(columns);
-  const row = rows.find((r) => r.id === rowId);
-  if (!row || isCellSkipped(row, colId)) return rows;
+  const anchor = resolveMergeAnchor(rows, rowId, colId);
+  if (!anchor) return rows;
 
+  const row = anchor;
   const colIdx = sortedCols.findIndex((c) => c.id === colId);
   if (colIdx < 0) return rows;
 
@@ -68,28 +156,33 @@ export function mergeRight(rows: Row[], rowId: string, colId: string, columns: C
   const colspan = span + 1;
 
   return rows.map((r) => {
-    if (r.id !== rowId) return r;
-    let next = patchRowMeta(r, colId, { rowspan: getRowspan(r, colId), colspan });
+    if (r.id !== anchor.id) return r;
+    let next = patchRowMeta(r, colId, {
+      rowspan: getRowspan(r, colId),
+      colspan,
+    });
     next = patchRowMeta(next, rightColId, { skip: true });
     return next;
   });
 }
 
 export function splitCell(rows: Row[], rowId: string, colId: string, columns: Column[]): Row[] {
+  const anchor = resolveMergeAnchor(rows, rowId, colId) ?? rows.find((r) => r.id === rowId);
+  if (!anchor) return rows;
+
   const sorted = sortByOrder(rows);
   const sortedCols = sortByOrder(columns);
-  const rowIdx = sorted.findIndex((r) => r.id === rowId);
+  const rowIdx = sorted.findIndex((r) => r.id === anchor.id);
   const colIdx = sortedCols.findIndex((c) => c.id === colId);
   if (rowIdx < 0 || colIdx < 0) return rows;
 
-  const anchor = sorted[rowIdx];
   const rowspan = getRowspan(anchor, colId);
   const colspan = getColspan(anchor, colId);
 
   const affectedRowIds = new Set(sorted.slice(rowIdx, rowIdx + rowspan).map((r) => r.id));
   const affectedColIds = new Set(sortedCols.slice(colIdx, colIdx + colspan).map((c) => c.id));
 
-  return rows.map((r) => {
+  let result = rows.map((r) => {
     if (!affectedRowIds.has(r.id)) return r;
     let next = r;
     Array.from(affectedColIds).forEach((cid) => {
@@ -97,6 +190,8 @@ export function splitCell(rows: Row[], rowId: string, colId: string, columns: Co
     });
     return next;
   });
+
+  return normalizeCellMeta(result, columns);
 }
 
 export type SerialInfo = {
@@ -104,15 +199,21 @@ export type SerialInfo = {
   rowspan: number;
 };
 
-/** Serial numbers follow logical rows: merged-down continuation rows share one # and do not increment. */
+/**
+ * Serial numbers follow logical rows using the first column as the primary grouping key.
+ */
 export function buildSerialMap(rows: Row[], columns: Column[]): Map<string, SerialInfo> {
   const sorted = sortByOrder(rows);
+  const sortedCols = sortByOrder(columns);
+  const primaryColId = sortedCols[0]?.id;
   const map = new Map<string, SerialInfo>();
   let serial = 0;
 
   for (let i = 0; i < sorted.length; i++) {
     const row = sorted[i];
-    const isContinuation = columns.some((col) => isCellSkipped(row, col.id));
+    const isContinuation =
+      primaryColId &&
+      !shouldRenderCell(sorted, i, primaryColId, sortedCols);
 
     if (isContinuation) {
       map.set(row.id, { display: null, rowspan: 1 });
@@ -121,14 +222,21 @@ export function buildSerialMap(rows: Row[], columns: Column[]): Map<string, Seri
 
     serial += 1;
     let span = 1;
-    for (let j = i + 1; j < sorted.length; j++) {
-      const next = sorted[j];
-      if (columns.some((col) => isCellSkipped(next, col.id))) {
-        span += 1;
+    if (primaryColId) {
+      const anchorSpan = getRowspan(row, primaryColId);
+      if (anchorSpan > 1) {
+        span = anchorSpan;
       } else {
-        break;
+        for (let j = i + 1; j < sorted.length; j++) {
+          if (!shouldRenderCell(sorted, j, primaryColId, sortedCols)) {
+            span += 1;
+          } else {
+            break;
+          }
+        }
       }
     }
+
     map.set(row.id, { display: serial, rowspan: span });
   }
 

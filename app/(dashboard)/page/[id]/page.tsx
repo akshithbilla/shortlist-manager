@@ -11,7 +11,8 @@ import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/lib/store';
 import { DataTable } from '@/components/data-table';
 import { exportToCSV, exportToExcel, exportToPDF, printTable } from '@/lib/export';
-import type { Page } from '@/lib/supabase';
+import type { Page, Row, Column } from '@/lib/supabase';
+import { normalizeCellMeta } from '@/lib/table-layout';
 
 const PAGE_ICONS = ['📋', '🎓', '📊', '📌', '🔍', '💡', '📁', '🗂️', '✨', '🏆', '🎯', '📚'];
 type ShareLink = {
@@ -54,8 +55,26 @@ export default function PageView() {
       supabase.from('rows').select('*').eq('page_id', id).order('order_index'),
     ]);
 
-    setColumns(colsData ?? []);
-    setRows(rowsData ?? []);
+    const cols = (colsData ?? []) as Column[];
+    const rawRows = (rowsData ?? []) as Row[];
+    const visibleCols = [...cols].sort((a, b) => a.order_index - b.order_index);
+    const normalized = normalizeCellMeta(rawRows, visibleCols);
+
+    setColumns(cols);
+    setRows(normalized);
+
+    const fixes = normalized.filter((r) => {
+      const old = rawRows.find((o) => o.id === r.id);
+      return JSON.stringify(old?.cell_meta ?? {}) !== JSON.stringify(r.cell_meta ?? {});
+    });
+    if (fixes.length) {
+      await Promise.all(
+        fixes.map((r) =>
+          supabase.from('rows').update({ cell_meta: r.cell_meta ?? {} }).eq('id', r.id)
+        )
+      );
+    }
+
     setLoading(false);
   }, [id, router, setColumns, setRows, setCurrentPage]);
 
