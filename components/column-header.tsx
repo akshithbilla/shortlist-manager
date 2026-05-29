@@ -28,9 +28,25 @@ interface ColumnHeaderProps {
   onDelete: () => void;
   onHide: () => void;
   onTypeChange: (type: ColumnType) => void;
+  onGroupWithNext?: () => void;
+  draggable?: boolean;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }
 
-export function ColumnHeader({ column, sortDir, onSort, onRename, onDelete, onHide, onTypeChange }: ColumnHeaderProps) {
+export function ColumnHeader({
+  column,
+  sortDir,
+  onSort,
+  onRename,
+  onDelete,
+  onHide,
+  onTypeChange,
+  onGroupWithNext,
+  draggable,
+  onDragStart,
+  onDragEnd,
+}: ColumnHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameVal, setNameVal] = useState(column.name);
@@ -56,6 +72,20 @@ export function ColumnHeader({ column, sortDir, onSort, onRename, onDelete, onHi
 
   return (
     <div className="flex items-center gap-1 w-full group select-none relative" ref={menuRef}>
+      {draggable && (
+        <span
+          draggable
+          onDragStart={(e) => {
+            e.stopPropagation();
+            onDragStart?.();
+          }}
+          onDragEnd={onDragEnd}
+          className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-600 hover:text-slate-500"
+          title="Drag to reorder column"
+        >
+          <GripVertical className="w-3.5 h-3.5" />
+        </span>
+      )}
       <span className="text-slate-400 dark:text-slate-500 flex-shrink-0">
         {TYPE_ICONS[column.type]}
       </span>
@@ -122,6 +152,14 @@ export function ColumnHeader({ column, sortDir, onSort, onRename, onDelete, onHi
             >
               <Pencil className="w-3.5 h-3.5" /> Rename
             </button>
+            {onGroupWithNext && (
+              <button
+                onClick={() => { onGroupWithNext(); setMenuOpen(false); }}
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
+              >
+                <GripVertical className="w-3.5 h-3.5" /> Group with next column
+              </button>
+            )}
             <button
               onClick={() => { onHide(); setMenuOpen(false); }}
               className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"

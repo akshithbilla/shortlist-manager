@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import type { Column, Row } from '@/lib/supabase';
+import type { Column, Row, PageLayout } from '@/lib/supabase';
+import { buildColumnHeaderModel, getColspan, getRowspan, isCellSkipped } from '@/lib/table-layout';
 
 type SharedPayload = {
-  page: { id: string; name: string; icon?: string; updated_at?: string };
+  page: { id: string; name: string; icon?: string; updated_at?: string; layout?: PageLayout };
   columns: Column[];
   rows: Row[];
 };
@@ -48,6 +49,12 @@ export default function SharedPageView() {
     return visible.length > 0 ? visible : sorted;
   }, [data]);
 
+  const headerModel = useMemo(
+    () => buildColumnHeaderModel(visibleColumns, data?.page?.layout),
+    [visibleColumns, data?.page?.layout]
+  );
+  const hasGroupedHeaders = (data?.page?.layout?.column_groups?.length ?? 0) > 0;
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
@@ -85,25 +92,64 @@ export default function SharedPageView() {
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-auto">
           <table className="min-w-full border-separate border-spacing-0">
             <thead>
-              <tr>
-                {visibleColumns.map((col) => (
-                  <th
-                    key={col.id}
-                    className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-left text-sm font-semibold px-3 py-2 border-b border-slate-200 dark:border-slate-700"
-                  >
-                    {col.name}
-                  </th>
-                ))}
-              </tr>
+              {hasGroupedHeaders ? (
+                <>
+                  <tr>
+                    {headerModel.ungrouped.map((col) => (
+                      <th key={col.id} rowSpan={2} className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-left text-sm font-semibold px-3 py-2 border-b border-r border-slate-200 dark:border-slate-700">
+                        {col.name}
+                      </th>
+                    ))}
+                    {headerModel.groups.map((group) => (
+                      <th key={group.id} colSpan={group.column_ids.length} className="sticky top-0 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100 text-center text-sm font-semibold px-3 py-2 border-b border-slate-200 dark:border-slate-700">
+                        {group.label}
+                      </th>
+                    ))}
+                  </tr>
+                  <tr>
+                    {headerModel.groups.flatMap((group) =>
+                      group.column_ids
+                        .map((cid) => visibleColumns.find((c) => c.id === cid))
+                        .filter(Boolean)
+                        .map((col) => (
+                          <th key={col!.id} className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-left text-sm font-medium px-3 py-2 border-b border-slate-200 dark:border-slate-700">
+                            {col!.name}
+                          </th>
+                        ))
+                    )}
+                  </tr>
+                </>
+              ) : (
+                <tr>
+                  {visibleColumns.map((col) => (
+                    <th
+                      key={col.id}
+                      className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-left text-sm font-semibold px-3 py-2 border-b border-slate-200 dark:border-slate-700"
+                    >
+                      {col.name}
+                    </th>
+                  ))}
+                </tr>
+              )}
             </thead>
             <tbody>
               {data.rows.map((row) => (
                 <tr key={row.id}>
-                  {visibleColumns.map((col) => (
-                    <td key={`${row.id}-${col.id}`} className="px-3 py-2 text-sm border-b border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-300">
-                      {formatCell(row.data[col.id])}
-                    </td>
-                  ))}
+                  {visibleColumns.map((col) => {
+                    if (isCellSkipped(row, col.id)) return null;
+                    const rowspan = getRowspan(row, col.id);
+                    const colspan = getColspan(row, col.id);
+                    return (
+                      <td
+                        key={`${row.id}-${col.id}`}
+                        rowSpan={rowspan > 1 ? rowspan : undefined}
+                        colSpan={colspan > 1 ? colspan : undefined}
+                        className="px-3 py-2 text-sm border-b border-r border-slate-100 dark:border-slate-800 text-slate-700 dark:text-slate-300 align-middle"
+                      >
+                        {formatCell(row.data[col.id])}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>

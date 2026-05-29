@@ -26,7 +26,7 @@ type ShareLink = {
 export default function PageView() {
   const { id } = useParams() as { id: string };
   const router = useRouter();
-  const { pages, setPages, setColumns, setRows, columns, rows } = useAppStore();
+  const { pages, setPages, setColumns, setRows, setCurrentPage, columns, rows } = useAppStore();
   const [page, setPage] = useState<Page | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingName, setEditingName] = useState(false);
@@ -46,6 +46,7 @@ export default function PageView() {
     const { data: pageData } = await supabase.from('pages').select('*').eq('id', id).maybeSingle();
     if (!pageData) { router.push('/dashboard'); return; }
     setPage(pageData);
+    setCurrentPage(pageData);
     setNameVal(pageData.name);
 
     const [{ data: colsData }, { data: rowsData }] = await Promise.all([
@@ -56,7 +57,7 @@ export default function PageView() {
     setColumns(colsData ?? []);
     setRows(rowsData ?? []);
     setLoading(false);
-  }, [id, router, setColumns, setRows]);
+  }, [id, router, setColumns, setRows, setCurrentPage]);
 
   useEffect(() => { loadPage(); }, [loadPage]);
 

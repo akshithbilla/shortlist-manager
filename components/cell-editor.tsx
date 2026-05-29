@@ -43,7 +43,7 @@ export function CellEditor({ column, value, onChange, onBlur, editing, onStartEd
   if (column.type === 'rating') {
     const num = Number(value) || 0;
     return (
-      <div className="flex items-center gap-0.5 px-2">
+      <div className="flex items-center justify-center gap-0.5 px-2 w-full">
         {[1, 2, 3, 4, 5].map((star) => (
           <button
             key={star}
@@ -76,7 +76,7 @@ export function CellEditor({ column, value, onChange, onBlur, editing, onStartEd
     }
     const statusClass = STATUS_COLORS[String(value)] ?? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
     return (
-      <div className="px-2 flex items-center h-full" onClick={onStartEdit}>
+      <div className="px-2 flex items-center justify-center h-full w-full text-center" onClick={onStartEdit}>
         {value ? (
           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusClass}`}>
             {String(value)}
@@ -101,7 +101,7 @@ export function CellEditor({ column, value, onChange, onBlur, editing, onStartEd
       );
     }
     return (
-      <div className="px-2 flex items-center gap-1 flex-wrap h-full overflow-hidden" onClick={onStartEdit}>
+      <div className="px-2 flex items-center justify-center gap-1 flex-wrap h-full w-full overflow-hidden text-center" onClick={onStartEdit}>
         {tags.length > 0 ? tags.map((t) => (
           <span key={t} className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded text-xs">
             {t}
@@ -127,7 +127,7 @@ export function CellEditor({ column, value, onChange, onBlur, editing, onStartEd
       );
     }
     return (
-      <div className="px-2 flex items-center gap-1.5 h-full group" onClick={onStartEdit}>
+      <div className="px-2 flex items-center justify-center gap-1.5 h-full w-full text-center group" onClick={onStartEdit}>
         {value ? (
           <>
             <span className="text-blue-600 dark:text-blue-400 text-sm truncate">{String(value)}</span>
@@ -158,12 +158,12 @@ export function CellEditor({ column, value, onChange, onBlur, editing, onStartEd
           onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
           onBlur={onBlur}
           onKeyDown={handleKeyDown}
-          className="w-full h-full px-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-blue-400 rounded focus:outline-none text-right"
+          className="w-full h-full px-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-blue-400 rounded focus:outline-none text-center"
         />
       );
     }
     return (
-      <div className="px-2 flex items-center justify-end h-full" onClick={onStartEdit}>
+      <div className="px-2 flex items-center justify-center h-full w-full text-center" onClick={onStartEdit}>
         <span className={`text-sm ${value !== null && value !== undefined ? 'text-slate-700 dark:text-slate-200' : 'text-slate-300 dark:text-slate-600'}`}>
           {value !== null && value !== undefined ? String(value) : '—'}
         </span>
@@ -185,7 +185,7 @@ export function CellEditor({ column, value, onChange, onBlur, editing, onStartEd
       );
     }
     return (
-      <div className="px-2 flex items-center h-full" onClick={onStartEdit}>
+      <div className="px-2 flex items-center justify-center h-full w-full text-center" onClick={onStartEdit}>
         <span className={`text-sm ${value ? 'text-slate-700 dark:text-slate-200' : 'text-slate-300 dark:text-slate-600'}`}>
           {value ? new Date(String(value)).toLocaleDateString('en-IN') : '—'}
         </span>
@@ -209,8 +209,8 @@ export function CellEditor({ column, value, onChange, onBlur, editing, onStartEd
   }
 
   return (
-    <div className="px-2 flex items-center h-full" onClick={onStartEdit}>
-      <span className={`text-sm truncate ${value ? 'text-slate-700 dark:text-slate-200' : 'text-slate-300 dark:text-slate-600'}`}>
+    <div className="px-2 flex items-center justify-center h-full w-full text-center" onClick={onStartEdit}>
+      <span className={`text-sm truncate max-w-full ${value ? 'text-slate-700 dark:text-slate-200' : 'text-slate-300 dark:text-slate-600'}`}>
         {value ? String(value) : '—'}
       </span>
     </div>

@@ -16,6 +16,16 @@ export type Workspace = {
   updated_at: string;
 };
 
+export type ColumnGroup = {
+  id: string;
+  label: string;
+  column_ids: string[];
+};
+
+export type PageLayout = {
+  column_groups?: ColumnGroup[];
+};
+
 export type Page = {
   id: string;
   workspace_id: string;
@@ -26,8 +36,15 @@ export type Page = {
   is_favorite: boolean;
   order_index: number;
   view_type?: string;
+  layout?: PageLayout;
   created_at: string;
   updated_at: string;
+};
+
+export type CellMeta = {
+  rowspan?: number;
+  colspan?: number;
+  skip?: boolean;
 };
 
 export type Column = {
@@ -50,6 +67,7 @@ export type Row = {
   page_id: string;
   user_id: string;
   data: Record<string, unknown>;
+  cell_meta?: Record<string, CellMeta>;
   order_index: number;
   is_favorite: boolean;
   created_at: string;

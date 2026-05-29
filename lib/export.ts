@@ -1,4 +1,8 @@
 import type { Column, Row } from './supabase';
+import { getColspan, getRowspan, isCellSkipped, sortByOrder } from './table-layout';
+
+const CELL_STYLE = 'text-align:center;vertical-align:middle;padding:10px 8px;';
+const DATA_CELL_CLASS = 'data-cell';
 
 function getExportColumns(columns: Column[]) {
   const sorted = [...columns].sort((a, b) => a.order_index - b.order_index);
@@ -15,9 +19,11 @@ function formatCellValue(value: unknown) {
 
 export function exportToCSV(columns: Column[], rows: Row[], filename = 'export') {
   const visibleCols = getExportColumns(columns);
+  const sorted = sortByOrder(rows);
   const header = visibleCols.map((c) => c.name).join(',');
-  const body = rows.map((r) => {
+  const body = sorted.map((r) => {
     return visibleCols.map((c) => {
+      if (isCellSkipped(r, c.id)) return '';
       const str = formatCellValue(r.data[c.id]);
       return str.includes(',') ? `"${str}"` : str;
     }).join(',');
@@ -26,17 +32,48 @@ export function exportToCSV(columns: Column[], rows: Row[], filename = 'export')
   downloadFile(csv, `${filename}.csv`, 'text/csv');
 }
 
+function buildHtmlDataCell(row: Row, col: Column, colIndex: number) {
+  if (isCellSkipped(row, col.id)) return '';
+  const rs = getRowspan(row, col.id);
+  const cs = getColspan(row, col.id);
+  const attrs = [
+    rs > 1 ? `rowspan="${rs}"` : '',
+    cs > 1 ? `colspan="${cs}"` : '',
+    `class="${DATA_CELL_CLASS} col-${colIndex % 2}"`,
+    `style="${CELL_STYLE}"`,
+  ].filter(Boolean).join(' ');
+  return `<td ${attrs}>${escapeHtml(formatCellValue(row.data[col.id]))}</td>`;
+}
+
 export function exportToExcel(columns: Column[], rows: Row[], filename = 'export') {
-  // Dynamic import to avoid SSR issues
   import('xlsx').then((XLSX) => {
     const visibleCols = getExportColumns(columns);
+    const sorted = sortByOrder(rows);
     const data = [
       visibleCols.map((c) => c.name),
-      ...rows.map((r) =>
-        visibleCols.map((c) => formatCellValue(r.data[c.id]))
+      ...sorted.map((r) =>
+        visibleCols.map((c) => (isCellSkipped(r, c.id) ? '' : formatCellValue(r.data[c.id])))
       ),
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
+    const merges: Array<{ s: { r: number; c: number }; e: { r: number; c: number } }> = [];
+    const rowOffset = 1;
+
+    sorted.forEach((row, ri) => {
+      visibleCols.forEach((col, ci) => {
+        if (isCellSkipped(row, col.id)) return;
+        const rs = getRowspan(row, col.id);
+        const cs = getColspan(row, col.id);
+        if (rs > 1 || cs > 1) {
+          merges.push({
+            s: { r: rowOffset + ri, c: ci },
+            e: { r: rowOffset + ri + rs - 1, c: ci + cs - 1 },
+          });
+        }
+      });
+    });
+
+    if (merges.length) ws['!merges'] = merges;
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
     XLSX.writeFile(wb, `${filename}.xlsx`);
@@ -53,21 +90,63 @@ export async function exportToPDF(columns: Column[], rows: Row[], title: string,
   doc.setFontSize(18);
   doc.text(title, 14, 22);
   doc.setFontSize(10);
+  doc.setTextColor(80, 80, 80);
   doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 30);
 
   const visibleCols = getExportColumns(columns);
+  const sorted = sortByOrder(rows);
   const head = [visibleCols.map((c) => c.name)];
-  const body = rows.map((r) =>
-    visibleCols.map((c) => formatCellValue(r.data[c.id]))
+  const body = sorted.map((r) =>
+    visibleCols.map((c) => {
+      if (isCellSkipped(r, c.id)) return '';
+      const rs = getRowspan(r, c.id);
+      const cs = getColspan(r, c.id);
+      const content = formatCellValue(r.data[c.id]);
+      if (rs === 1 && cs === 1) return content;
+      return {
+        content,
+        rowSpan: rs > 1 ? rs : undefined,
+        colSpan: cs > 1 ? cs : undefined,
+      };
+    })
   );
 
   autoTable(doc, {
     head,
     body,
     startY: 36,
-    styles: { fontSize: 8, cellPadding: 2 },
-    headStyles: { fillColor: [30, 30, 30], textColor: 255 },
-    alternateRowStyles: { fillColor: [245, 245, 245] },
+    theme: 'grid',
+    styles: {
+      fontSize: 9,
+      cellPadding: 5,
+      halign: 'center',
+      valign: 'middle',
+      lineColor: [51, 65, 85],
+      lineWidth: 0.4,
+      textColor: [30, 41, 59],
+    },
+    headStyles: {
+      fillColor: [30, 41, 59],
+      textColor: 255,
+      halign: 'center',
+      valign: 'middle',
+      fontStyle: 'bold',
+      lineColor: [15, 23, 42],
+      lineWidth: 0.6,
+    },
+    alternateRowStyles: {
+      fillColor: [241, 245, 249],
+    },
+    didParseCell: (data) => {
+      if (data.section === 'body') {
+        data.cell.styles.halign = 'center';
+        data.cell.styles.valign = 'middle';
+        data.cell.styles.cellPadding = 5;
+        if (data.row.index % 2 === 0) {
+          data.cell.styles.fillColor = data.column.index % 2 === 0 ? [255, 255, 255] : [248, 250, 252];
+        }
+      }
+    },
   });
 
   doc.save(`${filename}.pdf`);
@@ -76,32 +155,70 @@ export async function exportToPDF(columns: Column[], rows: Row[], title: string,
 export function printTable(columns: Column[], rows: Row[], title: string) {
   const visibleCols = getExportColumns(columns);
   const generated = new Date().toLocaleString();
-  const headers = visibleCols.map((col) => `<th>${escapeHtml(col.name)}</th>`).join('');
-  const body = rows.map((row) => {
-    const cells = visibleCols
-      .map((col) => `<td>${escapeHtml(formatCellValue(row.data[col.id]))}</td>`)
-      .join('');
-    return `<tr>${cells}</tr>`;
-  }).join('');
+  const sorted = sortByOrder(rows);
+  const headers = visibleCols
+    .map((col, i) => `<th class="col-${i % 2}">${escapeHtml(col.name)}</th>`)
+    .join('');
+  const body = sorted
+    .map((row, rowIndex) => {
+      const cells = visibleCols
+        .map((col, colIndex) => buildHtmlDataCell(row, col, colIndex))
+        .join('');
+      const rowClass = rowIndex % 2 === 0 ? 'row-even' : 'row-odd';
+      return `<tr class="${rowClass}">${cells}</tr>`;
+    })
+    .join('');
 
   const html = `
     <html>
       <head>
         <title>${escapeHtml(title)}</title>
         <style>
-          body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
-          h1 { margin: 0 0 8px; font-size: 22px; }
-          .meta { margin-bottom: 16px; color: #555; font-size: 12px; }
-          table { width: 100%; border-collapse: collapse; font-size: 11px; }
-          th, td { border: 1px solid #d1d5db; padding: 6px; vertical-align: top; text-align: left; }
-          th { background: #f3f4f6; font-weight: 600; }
-          tr:nth-child(even) td { background: #fafafa; }
-          @media print { body { margin: 10mm; } }
+          * { box-sizing: border-box; }
+          body { font-family: 'Segoe UI', Arial, sans-serif; margin: 24px; color: #1e293b; background: #fff; }
+          h1 { margin: 0 0 6px; font-size: 22px; color: #0f172a; }
+          .meta { margin-bottom: 18px; color: #64748b; font-size: 12px; }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            border: 2px solid #334155;
+          }
+          thead th {
+            background: #1e293b;
+            color: #fff;
+            font-weight: 700;
+            padding: 12px 10px;
+            border: 1px solid #0f172a;
+            text-align: center;
+            vertical-align: middle;
+          }
+          tbody td {
+            border: 1px solid #94a3b8;
+            padding: 10px 8px;
+            text-align: center;
+            vertical-align: middle;
+            color: #1e293b;
+          }
+          tbody tr.row-even td { background: #ffffff; }
+          tbody tr.row-odd td { background: #f1f5f9; }
+          tbody td.col-0 { background-color: inherit; }
+          tbody tr.row-even td.col-1 { background: #f8fafc; }
+          tbody tr.row-odd td.col-1 { background: #e2e8f0; }
+          tbody tr.row-even td.col-0 { background: #ffffff; }
+          tbody tr.row-odd td.col-0 { background: #f1f5f9; }
+          thead th.col-0 { background: #1e293b; }
+          thead th.col-1 { background: #334155; }
+          @media print {
+            body { margin: 10mm; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; }
+          }
         </style>
       </head>
       <body>
         <h1>${escapeHtml(title)}</h1>
-        <div class="meta">Generated: ${escapeHtml(generated)} | Rows: ${rows.length} | Columns: ${visibleCols.length}</div>
+        <div class="meta">Generated: ${escapeHtml(generated)} | Rows: ${sorted.length} | Columns: ${visibleCols.length}</div>
         <table>
           <thead><tr>${headers}</tr></thead>
           <tbody>${body}</tbody>
